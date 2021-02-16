@@ -87,6 +87,40 @@ namespace OpenTelemetry.Trace
             this.localParentNotSampled = localParentNotSampled ?? new AlwaysOffSampler();
         }
 
+        public SamplingResult ShouldSample_Original(in SamplingParameters samplingParameters)
+        {
+            var parentContext = samplingParameters.ParentContext;
+            if (parentContext.TraceId == default)
+            {
+                // If no parent, use the rootSampler to determine sampling.
+                return this.rootSampler.ShouldSample(samplingParameters);
+            }
+
+            // If the parent is sampled keep the sampling decision.
+            if ((parentContext.TraceFlags & ActivityTraceFlags.Recorded) != 0)
+            {
+                return new SamplingResult(SamplingDecision.RecordAndSample);
+            }
+
+            if (samplingParameters.Links != null)
+            {
+                // If any linked context is sampled keep the sampling decision.
+                // TODO: This is not mentioned in the spec.
+                // Follow up with spec to see if context from Links
+                // must be used in ParentBasedSampler.
+                foreach (var parentLink in samplingParameters.Links)
+                {
+                    if ((parentLink.Context.TraceFlags & ActivityTraceFlags.Recorded) != 0)
+                    {
+                        return new SamplingResult(SamplingDecision.RecordAndSample);
+                    }
+                }
+            }
+
+            // If parent was not sampled, do not sample.
+            return new SamplingResult(SamplingDecision.Drop);
+        }
+
         /// <inheritdoc />
         public override SamplingResult ShouldSample(in SamplingParameters samplingParameters)
         {
